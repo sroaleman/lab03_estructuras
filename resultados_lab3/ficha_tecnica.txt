@@ -1,0 +1,67 @@
+FICHA TECNICA DEL EXPERIMENTO - Laboratorio 3
+================================================
+Fecha y hora de la corrida : 2026-10-04 14:55:31
+
+HARDWARE / SOFTWARE
+--------------------
+Python       : 3.12.10
+SO           : Windows 11
+Procesador   : Intel64 Family 6 Model 186 Stepping 3, GenuineIntel
+(Nota: correr localmente, NO en Colab, para evitar variabilidad de recursos
+ compartidos. Todo el experimento corre en un solo proceso, en RAM.)
+
+GENERACION DE DATOS
+--------------------
+IDs unicos por muestreo sin reemplazo (random.sample) sobre un rango amplio,
+simulando numeros de matricula reales. Nombre/edad/promedio son sinteticos,
+no afectan el rendimiento medido (solo el ID se usa para buscar/ordenar).
+Semilla fija (seed=42): la corrida es reproducible.
+
+GENERACION DE BUSQUEDAS
+------------------------
+Para cada N se genera un conjunto de M IDs objetivo, elegidos aleatoriamente
+ENTRE LOS IDs QUE SI EXISTEN en el conjunto (random.sample sin reemplazo),
+para medir el caso de busqueda exitosa. M es un parametro independiente,
+explorado en el Experimento D (M = 10, 100, 1000, 10000) con N fijo.
+
+METODO DE MEDICION DE TIEMPOS
+-------------------------------
+time.perf_counter() (reloj monotonico de mayor resolucion en Python).
+Insercion: se cronometra construir la estructura completa (N inserciones).
+Busqueda:  se cronometra el total de las M busquedas (no una individual).
+Listar:    se cronometra una llamada a listar() sobre la estructura ya construida.
+
+TRATAMIENTO DE VALORES ATIPICOS
+---------------------------------
+Regla del rango intercuartilico (IQR) por cada grupo (estructura, N):
+se descartan las repeticiones fuera de [Q1 - 1.5*IQR, Q3 + 1.5*IQR] antes
+de calcular media y desviacion estandar. Se reporta tambien la mediana
+(estadistico robusto) y cuantos valores se removieron por grupo (columna
+'outliers_removidos' en los _agg.csv). Con menos de 4 repeticiones no se
+aplica el filtro (IQR no es confiable con tan pocos datos).
+
+ESTADISTICAS UTILIZADAS
+-------------------------
+Media y desviacion estandar (tras remover outliers), mediana (sin remover
+outliers, como referencia robusta), y ajuste de pendiente log-log
+(regresion sobre ln(tiempo) vs ln(N)) para estimar el orden de crecimiento
+empirico y compararlo con la complejidad teorica.
+
+PARAMETROS DE CADA EXPERIMENTO
+--------------------------------
+A) Busqueda vs N, aleatorio : N=[10, 50, 100, 200, 500, 1000, 2000, 5000, 10000, 20000, 50000, 100000]
+   repeticiones=5, M=100  -> tardo 6.73 s
+B) Busqueda vs N, ordenado  : N=[200, 500, 1000, 2000, 3000, 5000]  (acotado: ABB insercion O(n^2))
+   repeticiones=3, M=100  -> tardo 2.74 s
+C) Construccion gran escala : N=[10000, 100000, 1000000]
+   repeticiones=3  -> tardo 41.07 s
+D) Variacion de M, N=10000 fijo : M=[10, 100, 1000, 10000]
+   repeticiones=5  -> tardo 8.76 s
+L) Listar vs N, aleatorio   : N=[100, 1000, 10000, 100000]
+   repeticiones=5  -> tardo 2.53 s
+
+TIEMPO TOTAL DEL SCRIPT: 68.96 s (~1.1 min)
+
+VERIFICACION DE CORRECTITUD: realizada al inicio (n=2000) -- las 3
+estructuras producen el mismo resultado en listar() y en buscar()
+(ver mensaje "[OK] Verificacion de correctitud" en la salida de consola).
