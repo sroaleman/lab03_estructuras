@@ -245,14 +245,14 @@ def agregar_robusto(df, group_cols, value_col):
 # =====================================================================
 print("\n=== A: busqueda vs N (aleatorio) ===")
 t0_exp = time.perf_counter()
-n_values_A = [10, 50, 100, 200, 500, 1000, 2000, 5000, 10000, 20000, 50000, 100000]
-REP_A, M_A = 5, 100   # M = numero de busquedas por repeticion
+n_values_A = [10, 50, 100, 200, 500, 1000, 2000, 5000, 10000, 20000, 50000, 100000, 200000]
+REP_A, M_A = 5, 10000   # M = numero de busquedas por repeticion (subido de 100 a 1000 y luego a 10000: menos ruido, tiempos mas cercanos al rango 1-5s)
 regA = []
 for n in n_values_A:
     datos = gen_estudiantes(n)
     ids = [d["id"] for d in datos]
     for rep in range(REP_A):
-        targets = random.sample(ids, min(M_A, n))
+        targets = random.choices(ids, k=M_A)   # con reemplazo: M fijo para todo N
         for nombre, cls in ESTRUCTURAS:
             est, t_ins = construir(cls, datos)
             t_b = medir_busqueda(est, targets)
@@ -275,15 +275,15 @@ print(f"  >> tardo {tiempos_experimentos['A']:.2f} s")
 # =====================================================================
 print("\n=== B: busqueda vs N (ordenado) ===")
 t0_exp = time.perf_counter()
-n_values_B = [200, 500, 1000, 2000, 3000, 5000]
-REP_B, M_B = 3, 100
+n_values_B = [200, 500, 1000, 2000, 3000, 5000, 7500, 10000]
+REP_B, M_B = 3, 10000   # igual que en A: M subido para reducir ruido
 regB = []
 for n in n_values_B:
     datos_base = gen_estudiantes(n)
     datos = sorted(datos_base, key=lambda x: x["id"])
     ids = [d["id"] for d in datos_base]
     for rep in range(REP_B):
-        targets = random.sample(ids, min(M_B, n))
+        targets = random.choices(ids, k=M_B)   # con reemplazo: M fijo para todo N
         for nombre, cls in ESTRUCTURAS:
             est, t_ins = construir(cls, datos)
             t_b = medir_busqueda(est, targets)
@@ -355,6 +355,40 @@ tiempos_experimentos["D"] = time.perf_counter() - t0_exp
 print(f"  >> tardo {tiempos_experimentos['D']:.2f} s")
 
 # =====================================================================
+# EXPERIMENTO E: busqueda con M CALIBRADO POR ESTRUCTURA (para que los
+#   tiempos caigan en el rango 1-5 s recomendado). Como ABB y B+ son hasta
+#   ~1000 veces mas rapidos que la Lista, necesitan un M mucho mayor.
+#   OJO: M distinto por estructura => estas curvas NO se comparan entre si
+#   (para comparar estructuras con el mismo M usar el Experimento A).
+#   La Lista se toma del Experimento A (M=10000), que ya cae en el rango
+#   desde N=10.000.
+# =====================================================================
+print("\n=== E: busqueda con M calibrado por estructura (ABB y B+) ===")
+t0_exp = time.perf_counter()
+n_values_E = [10000, 50000, 100000, 200000]
+M_E = {"ABB": 2_000_000, "B+": 4_000_000}
+REP_E = 3
+regE = []
+for n in n_values_E:
+    datos = gen_estudiantes(n)
+    ids = [d["id"] for d in datos]
+    for nombre, cls in ESTRUCTURAS:
+        if nombre not in M_E:
+            continue
+        est, _ = construir(cls, datos)
+        for rep in range(REP_E):
+            targets = random.choices(ids, k=M_E[nombre])
+            t_b = medir_busqueda(est, targets)
+            regE.append({"estructura": nombre, "n": n, "m": M_E[nombre], "rep": rep, "t_busqueda": t_b})
+    print(f"  n={n:>7} OK")
+dfE = pd.DataFrame(regE)
+dfE.to_csv(OUT + "E_busqueda_M_calibrado_raw.csv", index=False)
+aggE = agregar_robusto(dfE, ["estructura", "n", "m"], "t_busqueda")
+aggE.to_csv(OUT + "E_busqueda_M_calibrado_agg.csv", index=False)
+tiempos_experimentos["E"] = time.perf_counter() - t0_exp
+print(f"  >> tardo {tiempos_experimentos['E']:.2f} s")
+
+# =====================================================================
 # EXPERIMENTO L: tiempo de LISTAR vs N (orden aleatorio)
 #   Lista debe ordenar (O(n log n)); ABB recorre in-order (O(n));
 #   B+ recorre hojas ya enlazadas (O(n), sin comparaciones)
@@ -397,17 +431,39 @@ def plot_err(ax, df, xcol, ycol_media, ycol_std, xlabel, ylabel, titulo):
 fig, axes = plt.subplots(1, 3, figsize=(17, 5))
 for ax, esc in zip(axes, ["lineal", "semilog", "loglog"]):
     plot_err(ax, aggA_b, "n", "t_busqueda_media", "t_busqueda_std",
-             "N (número de estudiantes)", "Tiempo total de búsqueda (M=100) [s]",
+             "N (número de estudiantes)", f"Tiempo total de búsqueda (M={M_A}) [s]",
              esc.upper())
     if esc in ("semilog", "loglog"): ax.set_yscale("log")
     if esc == "loglog": ax.set_xscale("log")
-fig.suptitle("Tiempo de BÚSQUEDA vs N — orden ALEATORIO (N=10 a 100.000, M=100)")
+fig.suptitle(f"Tiempo de BÚSQUEDA vs N — orden ALEATORIO (N={min(n_values_A):,} a {max(n_values_A):,}, M={M_A:,})".replace(",", "."))
 fig.tight_layout(); fig.savefig(OUT + "figA_busqueda_aleatorio.png", dpi=140); plt.close(fig)
+
+# FigA2: una grafica POR estructura, cada una con su propia escala vertical
+# (sirve para ver el detalle de ABB y B+; OJO: las escalas Y son distintas
+# entre paneles, para comparar estructuras usar figA o figA3)
+fig, axes = plt.subplots(1, 3, figsize=(17, 4.8))
+for ax, est in zip(axes, ["Lista", "ABB", "B+"]):
+    sub = aggA_b[aggA_b.estructura == est].sort_values("n")
+    ax.errorbar(sub.n, sub.t_busqueda_media, yerr=sub.t_busqueda_std, color=colores[est],
+                marker=marcas[est], capsize=3, linewidth=1.8, label=est)
+    ax.set_xlabel("N (número de estudiantes)")
+    ax.set_ylabel(f"Tiempo total de búsqueda (M={M_A}) [s]")
+    ax.set_title(f"{est} (escala vertical propia)")
+    ax.legend(); ax.grid(alpha=0.3)
+fig.suptitle(f"Búsqueda vs N por estructura — orden ALEATORIO (M={M_A})")
+fig.tight_layout(); fig.savefig(OUT + "figA2_busqueda_por_estructura.png", dpi=140); plt.close(fig)
+
+# FigA3: zoom ABB vs B+ (comparables entre si, sin la Lista que los aplasta)
+fig, ax = plt.subplots(figsize=(7.5, 5))
+plot_err(ax, aggA_b[aggA_b.estructura.isin(["ABB", "B+"])], "n", "t_busqueda_media", "t_busqueda_std",
+         "N (número de estudiantes)", f"Tiempo total de búsqueda (M={M_A}) [s]",
+         "Zoom: ABB vs B+ — búsqueda vs N, orden ALEATORIO")
+fig.tight_layout(); fig.savefig(OUT + "figA3_zoom_abb_vs_bplus.png", dpi=140); plt.close(fig)
 
 # FigB: busqueda vs n (ordenado)
 fig, ax = plt.subplots(figsize=(7, 5))
 plot_err(ax, aggB_b, "n", "t_busqueda_media", "t_busqueda_std",
-         "N (número de estudiantes)", "Tiempo total de búsqueda (M=100) [s]",
+         f"N (número de estudiantes)", f"Tiempo total de búsqueda (M={M_B}) [s]",
          "Búsqueda vs N — orden YA ORDENADO (caso patológico del ABB)")
 fig.tight_layout(); fig.savefig(OUT + "figB_busqueda_ordenado.png", dpi=140); plt.close(fig)
 
@@ -448,7 +504,7 @@ for est in ["ABB", "B+"]:
     sub = dfA_abb_bplus[dfA_abb_bplus.estructura == est]
     axes[1].scatter(sub.altura, sub.t_busqueda, s=12, alpha=0.4, color=colores[est], label=est)
 axes[1].set_xlabel("Altura del árbol (niveles)")
-axes[1].set_ylabel("Tiempo total de búsqueda (M=100) [s]")
+axes[1].set_ylabel(f"Tiempo total de búsqueda (M={M_A}) [s]")
 axes[1].set_title("Relación altura <-> tiempo de búsqueda (cada punto = una corrida)")
 axes[1].legend(); axes[1].grid(alpha=0.3)
 fig.tight_layout(); fig.savefig(OUT + "figE_altura_vs_busqueda.png", dpi=140); plt.close(fig)
@@ -461,7 +517,25 @@ plot_err(ax, aggL, "n", "t_listar_media", "t_listar_std",
 ax.set_xscale("log"); ax.set_yscale("log")
 fig.tight_layout(); fig.savefig(OUT + "figF_listar.png", dpi=140); plt.close(fig)
 
-print("\nGraficas guardadas: figA..figF")
+# FigG: busqueda con M calibrado por estructura (una grafica por estructura,
+# cada una con su propio M y su propia escala; NO comparar entre paneles)
+fig, axes = plt.subplots(1, 3, figsize=(17, 4.8))
+sub_l = aggA_b[(aggA_b.estructura == "Lista") & (aggA_b.n >= min(n_values_E))].sort_values("n")
+paneles = [("Lista", sub_l.n, sub_l.t_busqueda_media, sub_l.t_busqueda_std, M_A)]
+for est in ["ABB", "B+"]:
+    se = aggE[aggE.estructura == est].sort_values("n")
+    paneles.append((est, se.n, se.t_busqueda_media, se.t_busqueda_std, M_E[est]))
+for ax, (est, x, y, e, m) in zip(axes, paneles):
+    ax.errorbar(x, y, yerr=e, color=colores[est], marker=marcas[est], capsize=3, linewidth=1.8, label=est)
+    ax.axhspan(1, 5, color="gold", alpha=0.25, label="Rango 1-5 s")
+    ax.set_xlabel("N (número de estudiantes)")
+    ax.set_ylabel("Tiempo total de búsqueda [s]")
+    ax.set_title(f"{est}: M = {m:,}".replace(",", "."))
+    ax.legend(); ax.grid(alpha=0.3)
+fig.suptitle("Búsqueda vs N con M calibrado por estructura (cada panel usa su propio M y su propia escala)")
+fig.tight_layout(); fig.savefig(OUT + "figG_busqueda_M_calibrado.png", dpi=140); plt.close(fig)
+
+print("\nGraficas guardadas: figA, figA2, figA3, figB..figG")
 
 # =====================================================================
 # 6. FICHA TECNICA (para la sustentacion: hardware, software, metodologia)
@@ -489,7 +563,8 @@ Semilla fija (seed=42): la corrida es reproducible.
 GENERACION DE BUSQUEDAS
 ------------------------
 Para cada N se genera un conjunto de M IDs objetivo, elegidos aleatoriamente
-ENTRE LOS IDs QUE SI EXISTEN en el conjunto (random.sample sin reemplazo),
+ENTRE LOS IDs QUE SI EXISTEN en el conjunto (random.choices, con reemplazo, para que M sea
+constante aunque N < M),
 para medir el caso de busqueda exitosa. M es un parametro independiente,
 explorado en el Experimento D (M = 10, 100, 1000, 10000) con N fijo.
 
@@ -526,7 +601,7 @@ C) Construccion gran escala : N={n_values_C}
    repeticiones={REP_C}  -> tardo {tiempos_experimentos['C']:.2f} s
 D) Variacion de M, N={n_fijo} fijo : M={m_values}
    repeticiones={REP_D}  -> tardo {tiempos_experimentos['D']:.2f} s
-L) Listar vs N, aleatorio   : N={n_values_L}
+E) Busqueda con M calibrado (ABB y B+; Lista = Experimento A): N={n_values_E}\n   M por estructura={M_E}, repeticiones={REP_E}  -> tardo {tiempos_experimentos['E']:.2f} s\nL) Listar vs N, aleatorio   : N={n_values_L}
    repeticiones={REP_L}  -> tardo {tiempos_experimentos['L']:.2f} s
 
 TIEMPO TOTAL DEL SCRIPT: {tiempo_total:.2f} s (~{tiempo_total/60:.1f} min)

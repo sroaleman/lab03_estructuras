@@ -1,6 +1,6 @@
 FICHA TECNICA DEL EXPERIMENTO - Laboratorio 3
 ================================================
-Fecha y hora de la corrida : 2026-10-04 14:55:31
+Fecha y hora de la corrida : 2026-10-07 17:01:05
 
 HARDWARE / SOFTWARE
 --------------------
@@ -20,7 +20,8 @@ Semilla fija (seed=42): la corrida es reproducible.
 GENERACION DE BUSQUEDAS
 ------------------------
 Para cada N se genera un conjunto de M IDs objetivo, elegidos aleatoriamente
-ENTRE LOS IDs QUE SI EXISTEN en el conjunto (random.sample sin reemplazo),
+ENTRE LOS IDs QUE SI EXISTEN en el conjunto (random.choices, con reemplazo, para que M sea
+constante aunque N < M),
 para medir el caso de busqueda exitosa. M es un parametro independiente,
 explorado en el Experimento D (M = 10, 100, 1000, 10000) con N fijo.
 
@@ -49,18 +50,20 @@ empirico y compararlo con la complejidad teorica.
 
 PARAMETROS DE CADA EXPERIMENTO
 --------------------------------
-A) Busqueda vs N, aleatorio : N=[10, 50, 100, 200, 500, 1000, 2000, 5000, 10000, 20000, 50000, 100000]
-   repeticiones=5, M=100  -> tardo 6.73 s
-B) Busqueda vs N, ordenado  : N=[200, 500, 1000, 2000, 3000, 5000]  (acotado: ABB insercion O(n^2))
-   repeticiones=3, M=100  -> tardo 2.74 s
+A) Busqueda vs N, aleatorio : N=[10, 50, 100, 200, 500, 1000, 2000, 5000, 10000, 20000, 50000, 100000, 200000]
+   repeticiones=5, M=10000  -> tardo 318.07 s
+B) Busqueda vs N, ordenado  : N=[200, 500, 1000, 2000, 3000, 5000, 7500, 10000]  (acotado: ABB insercion O(n^2))
+   repeticiones=3, M=10000  -> tardo 34.08 s
 C) Construccion gran escala : N=[10000, 100000, 1000000]
-   repeticiones=3  -> tardo 41.07 s
+   repeticiones=3  -> tardo 22.85 s
 D) Variacion de M, N=10000 fijo : M=[10, 100, 1000, 10000]
-   repeticiones=5  -> tardo 8.76 s
+   repeticiones=5  -> tardo 6.75 s
+E) Busqueda con M calibrado (ABB y B+; Lista = Experimento A): N=[10000, 50000, 100000, 200000]
+   M por estructura={'ABB': 2000000, 'B+': 4000000}, repeticiones=3  -> tardo 68.84 s
 L) Listar vs N, aleatorio   : N=[100, 1000, 10000, 100000]
-   repeticiones=5  -> tardo 2.53 s
+   repeticiones=5  -> tardo 1.25 s
 
-TIEMPO TOTAL DEL SCRIPT: 68.96 s (~1.1 min)
+TIEMPO TOTAL DEL SCRIPT: 457.85 s (~7.6 min)
 
 VERIFICACION DE CORRECTITUD: realizada al inicio (n=2000) -- las 3
 estructuras producen el mismo resultado en listar() y en buscar()
