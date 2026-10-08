@@ -16,9 +16,10 @@ Cubre lo que pide la guia:
 
 Todo corre en un solo proceso local, en RAM, sin I/O de disco durante las
 mediciones. Usa time.perf_counter() (el reloj de mayor resolucion
-de Python) para cronometrar.
+de Python) para cronometrar; antes de cada medicion de busqueda hace un
+calentamiento (sin medir) y desactiva el recolector de basura (gc).
 """
-import random, time, bisect, platform, datetime
+import random, time, bisect, platform, datetime, gc
 from pathlib import Path
 import numpy as np
 import pandas as pd
@@ -170,10 +171,18 @@ def construir(cls, datos):
     return est, time.perf_counter() - t0
 
 def medir_busqueda(est, targets):
-    t0 = time.perf_counter()
-    for t in targets:
+    # Calentamiento (NO cronometrado): evita medir efectos de primera llamada / cache frio.
+    for t in targets[:min(200, len(targets))]:
         est.buscar(t)
-    return time.perf_counter() - t0
+    gc.collect()
+    gc.disable()   # el recolector de basura no debe interrumpir la medicion
+    try:
+        t0 = time.perf_counter()
+        for t in targets:
+            est.buscar(t)
+        return time.perf_counter() - t0
+    finally:
+        gc.enable()
 
 def medir_listar(est):
     t0 = time.perf_counter()
@@ -234,6 +243,7 @@ def agregar_robusto(df, group_cols, value_col):
         fila[f"{value_col}_media"] = float(np.mean(limpio))
         fila[f"{value_col}_std"] = float(np.std(limpio, ddof=1)) if len(limpio) > 1 else 0.0
         fila[f"{value_col}_mediana"] = float(np.median(s))
+        fila["cv_pct"] = (fila[f"{value_col}_std"] / fila[f"{value_col}_media"] * 100) if fila[f"{value_col}_media"] else 0.0   # ruido relativo
         fila["repeticiones"] = len(s)
         fila["outliers_removidos"] = len(s) - len(limpio)
         filas.append(fila)
@@ -246,7 +256,7 @@ def agregar_robusto(df, group_cols, value_col):
 print("\n=== A: busqueda vs N (aleatorio) ===")
 t0_exp = time.perf_counter()
 n_values_A = [10, 50, 100, 200, 500, 1000, 2000, 5000, 10000, 20000, 50000, 100000, 200000]
-REP_A, M_A = 5, 10000   # M = numero de busquedas por repeticion (subido de 100 a 1000 y luego a 10000: menos ruido, tiempos mas cercanos al rango 1-5s)
+REP_A, M_A = 7, 10000   # M = numero de busquedas por repeticion (subido de 100 a 10000: menos ruido, tiempos mas cercanos al rango 1-5s); 7 repeticiones para promediar mejor el ruido
 regA = []
 for n in n_values_A:
     datos = gen_estudiantes(n)
@@ -541,6 +551,15 @@ print("\nGraficas guardadas: figA, figA2, figA3, figB..figG")
 # 6. FICHA TECNICA (para la sustentacion: hardware, software, metodologia)
 # =====================================================================
 tiempo_total = time.perf_counter() - t_inicio_total
+
+ruido_lineas = []
+for _est in ["Lista", "ABB", "B+"]:
+    _sub = aggA_b[(aggA_b.estructura == _est) & (aggA_b.n >= 10000)]
+    _imin, _imax = _sub.cv_pct.idxmin(), _sub.cv_pct.idxmax()
+    ruido_lineas.append(
+        f"   {_est:<6}: minimo {_sub.cv_pct.loc[_imin]:.2f}% (N={int(_sub.n.loc[_imin]):,}) | "
+        f"maximo {_sub.cv_pct.loc[_imax]:.2f}% (N={int(_sub.n.loc[_imax]):,})".replace(",", "."))
+ruido_txt = "\n".join(ruido_lineas)
 ficha = f"""FICHA TECNICA DEL EXPERIMENTO - Laboratorio 3
 ================================================
 Fecha y hora de la corrida : {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
@@ -573,6 +592,8 @@ METODO DE MEDICION DE TIEMPOS
 time.perf_counter() (reloj monotonico de mayor resolucion en Python).
 Insercion: se cronometra construir la estructura completa (N inserciones).
 Busqueda:  se cronometra el total de las M busquedas (no una individual).
+           Antes de cronometrar se hace un calentamiento de hasta 200 busquedas
+           (sin medir) y se desactiva el recolector de basura (gc) durante la medicion.
 Listar:    se cronometra una llamada a listar() sobre la estructura ya construida.
 
 TRATAMIENTO DE VALORES ATIPICOS
@@ -601,10 +622,15 @@ C) Construccion gran escala : N={n_values_C}
    repeticiones={REP_C}  -> tardo {tiempos_experimentos['C']:.2f} s
 D) Variacion de M, N={n_fijo} fijo : M={m_values}
    repeticiones={REP_D}  -> tardo {tiempos_experimentos['D']:.2f} s
-E) Busqueda con M calibrado (ABB y B+; Lista = Experimento A): N={n_values_E}\n   M por estructura={M_E}, repeticiones={REP_E}  -> tardo {tiempos_experimentos['E']:.2f} s\nL) Listar vs N, aleatorio   : N={n_values_L}
+E) Busqueda con M calibrado (ABB y B+; Lista = Experimento A): N={n_values_E}
+   M por estructura={M_E}, repeticiones={REP_E}  -> tardo {tiempos_experimentos['E']:.2f} s
+L) Listar vs N, aleatorio   : N={n_values_L}
    repeticiones={REP_L}  -> tardo {tiempos_experimentos['L']:.2f} s
 
 TIEMPO TOTAL DEL SCRIPT: {tiempo_total:.2f} s (~{tiempo_total/60:.1f} min)
+
+RUIDO EN EL EXPERIMENTO A (desviacion estandar / media, N >= 10.000)
+{ruido_txt}
 
 VERIFICACION DE CORRECTITUD: realizada al inicio (n=2000) -- las 3
 estructuras producen el mismo resultado en listar() y en buscar()
