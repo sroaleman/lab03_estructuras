@@ -1,38 +1,51 @@
 FICHA TECNICA DEL EXPERIMENTO - Laboratorio 3
 ================================================
-Fecha y hora de la corrida : 2026-10-07 20:34:18
+Fecha y hora de la corrida : 2026-10-10 16:34:58
+
 
 HARDWARE / SOFTWARE
 --------------------
 Python       : 3.12.10
 SO           : Windows 11
 Procesador   : Intel64 Family 6 Model 186 Stepping 3, GenuineIntel
+Reloj        : time.perf_counter, resolucion 1.0e-07 s
 (Nota: correr localmente, NO en Colab, para evitar variabilidad de recursos
  compartidos. Todo el experimento corre en un solo proceso, en RAM.)
 
-GENERACION DE DATOS
---------------------
+SEMILLA Y GENERACION DE DATOS
+-------------------------------
+Semilla base: 42  [fija (reproducible)]
+Para repetir exactamente esta corrida: python laboratorio3_completo.py --semilla 42
 IDs unicos por muestreo sin reemplazo (random.sample) sobre un rango amplio,
 simulando numeros de matricula reales. Nombre/edad/promedio son sinteticos,
 no afectan el rendimiento medido (solo el ID se usa para buscar/ordenar).
-Semilla fija (seed=42): la corrida es reproducible.
+Cada repeticion usa un dataset DISTINTO: semilla = "<base>-<experimento>-<N>-<repeticion>".
+Asi la desviacion estandar incluye la variabilidad entre conjuntos de datos y no solo el ruido
+del reloj. Con otra semilla base (--semilla aleatoria) se obtienen datos distintos.
 
 GENERACION DE BUSQUEDAS
 ------------------------
-Para cada N se genera un conjunto de M IDs objetivo, elegidos aleatoriamente
+Para cada N se generan lotes de M IDs objetivo, elegidos aleatoriamente
 ENTRE LOS IDs QUE SI EXISTEN en el conjunto (random.choices, con reemplazo, para que M sea
-constante aunque N < M),
-para medir el caso de busqueda exitosa. M es un parametro independiente,
-explorado en el Experimento D (M = 10, 100, 1000, 10000) con N fijo.
+constante aunque N < M), para medir el caso de busqueda exitosa. Se preparan 10 lotes
+distintos que se recorren ciclicamente si la ventana exige repetir. M es un parametro
+independiente, explorado en el Experimento D (M = 10, 100, 1000, 10000) con N fijo.
 
 METODO DE MEDICION DE TIEMPOS
 -------------------------------
 time.perf_counter() (reloj monotonico de mayor resolucion en Python).
+VENTANA MINIMA: cada medicion dura >= 1 s. Se mide un lote; si dura menos que la
+ventana, se repite (lotes distintos) hasta acumular la ventana y se reporta el tiempo medio por
+lote. Lo mismo para listar() (repite llamadas) y para la construccion del Experimento C
+(repite construcciones). Cumplimiento: 100.0 % de las 444 mediciones de busqueda (A, B, D, E) duraron >= 1 s (minimo 1.000 s).
 Insercion: se cronometra construir la estructura completa (N inserciones).
 Busqueda:  se cronometra el total de las M busquedas (no una individual).
            Antes de cronometrar se hace un calentamiento de hasta 200 busquedas
            (sin medir) y se desactiva el recolector de basura (gc) durante la medicion.
 Listar:    se cronometra una llamada a listar() sobre la estructura ya construida.
+ORDEN ALEATORIO DE EJECUCION: en cada repeticion se baraja el orden de los N y de las
+estructuras (reproducible por semilla), para que la deriva del computador (calentamiento,
+procesos de fondo) no se confunda con el efecto de N. La figura figI muestra esa deriva.
 
 TRATAMIENTO DE VALORES ATIPICOS
 ---------------------------------
@@ -45,33 +58,36 @@ aplica el filtro (IQR no es confiable con tan pocos datos).
 
 ESTADISTICAS UTILIZADAS
 -------------------------
-Media y desviacion estandar (tras remover outliers), mediana (sin remover
-outliers, como referencia robusta), y ajuste de pendiente log-log
-(regresion sobre ln(tiempo) vs ln(N)) para estimar el orden de crecimiento
-empirico y compararlo con la complejidad teorica.
+Media y desviacion estandar (tras remover outliers), IC 95 % de la media (t de Student,
+columna *_ic95), mediana (sin remover outliers, como referencia robusta), coeficiente de
+variacion (cv_pct) y ajuste de pendiente log-log con R^2 (regresion sobre ln(tiempo) vs ln(N),
+archivo pendientes_loglog.csv) junto a las pendientes que tendrian log2(N+1), N y N*log2(N+1)
+en la misma rejilla de N, para comparar el crecimiento empirico con la complejidad teorica.
 
 PARAMETROS DE CADA EXPERIMENTO
 --------------------------------
 A) Busqueda vs N, aleatorio : N=[10, 50, 100, 200, 500, 1000, 2000, 5000, 10000, 20000, 50000, 100000, 200000]
-   repeticiones=7, M=10000  -> tardo 365.22 s
-B) Busqueda vs N, ordenado  : N=[200, 500, 1000, 2000, 3000, 5000, 7500, 10000]  (acotado: ABB insercion O(n^2))
-   repeticiones=3, M=10000  -> tardo 35.98 s
+   repeticiones=7, M=10000  -> tardo 642.36 s
+B) Busqueda vs N, ordenado  : N=[200, 500, 1000, 2000, 3000, 5000, 7500, 10000, 30000, 100000]  (ABB solo hasta N=30000: insercion O(n^2))
+   repeticiones=3, M=10000  -> tardo 380.84 s
 C) Construccion gran escala : N=[10000, 100000, 1000000]
-   repeticiones=3  -> tardo 22.67 s
+   repeticiones=3  -> tardo 46.07 s
 D) Variacion de M, N=10000 fijo : M=[10, 100, 1000, 10000]
-   repeticiones=5  -> tardo 23.40 s
+   repeticiones=5  -> tardo 64.39 s
 E) Busqueda con M calibrado (ABB y B+; Lista = Experimento A): N=[10000, 50000, 100000, 200000]
-   M por estructura={'ABB': 2000000, 'B+': 4000000}, repeticiones=3  -> tardo 71.34 s
+   M por estructura={'ABB': 2000000, 'B+': 4000000}, repeticiones=3  -> tardo 72.37 s
 L) Listar vs N, aleatorio   : N=[100, 1000, 10000, 100000]
-   repeticiones=5  -> tardo 1.32 s
+   repeticiones=5  -> tardo 71.15 s
 
-TIEMPO TOTAL DEL SCRIPT: 522.37 s (~8.7 min)
+TIEMPO TOTAL DEL SCRIPT: 1283.95 s (~21.4 min)
 
 RUIDO EN EL EXPERIMENTO A (desviacion estandar / media, N >= 10.000)
-   Lista : minimo 1.30% (N=50.000) | maximo 3.01% (N=100.000)
-   ABB   : minimo 1.26% (N=10.000) | maximo 9.53% (N=20.000)
-   B+    : minimo 1.64% (N=20.000) | maximo 9.34% (N=100.000)
+   Lista : minimo 0.69% (N=20.000) | maximo 3.40% (N=100.000)
+   ABB   : minimo 0.37% (N=50.000) | maximo 2.50% (N=20.000)
+   B+    : minimo 1.63% (N=200.000) | maximo 2.68% (N=50.000)
 
 VERIFICACION DE CORRECTITUD: realizada al inicio (n=2000) -- las 3
 estructuras producen el mismo resultado en listar() y en buscar()
 (ver mensaje "[OK] Verificacion de correctitud" en la salida de consola).
+Ademas, en cada medicion de listar() se comprueba que los IDs salgan ordenados y en cada
+calentamiento de busqueda que el ID buscado exista.
